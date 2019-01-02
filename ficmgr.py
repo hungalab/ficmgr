@@ -29,7 +29,7 @@ VER_STR = 'ficmanager nyacom (C) December, 2018'
 
 #------------------------------------------------------------------------------
 # Define board and board uri
-BASE_URI = 'http://zeus.am.ics.keio.ac.jp/'
+BASE_URI = 'http://zeus.am.ics.keio.ac.jp'
 #BASE_URI = 'http://172.20.2.2'
 #------------------------------------------------------------------------------
 BOARDS = {
@@ -193,7 +193,7 @@ class ficmanage:
     #------------------------------------------------------------------------------
     # HTTP request handler
     #------------------------------------------------------------------------------
-    def post2fic(self, url, data):
+    def rest_post(self, url, data):
         ret = {'return', 'failed'}
         try:
             resp = requests.post(url, data=data, headers={'Content-Type': 'application/json'})
@@ -205,7 +205,7 @@ class ficmanage:
         return ret
 
     #------------------------------------------------------------------------------
-    def get2fic(self, url):
+    def rest_get(self, url):
         ret = {'return', 'failed'}
         try:
             resp = requests.get(url, headers={'Content-Type': 'application/json'})
@@ -217,7 +217,7 @@ class ficmanage:
         return ret
 
     #------------------------------------------------------------------------------
-    def delete2fic(self, url):
+    def rest_delete(self, url):
         ret = {'return', 'failed'}
         try:
             resp = requests.delete(url, headers={'Content-Type': 'application/json'})
@@ -250,7 +250,10 @@ class ficmanage:
             p.join()
             target, ret = q.get()
             stat[target] = ret
+            print(ret)
  
+        print("DEBUG", stat)
+
         for t in BOARDS.keys():
             if t in stat.keys():
                 if stat[t]['return'] == 'success':
@@ -693,7 +696,7 @@ class ficmanage:
             print("INFO: Send FPGA configuration {0:s} to {1:s}".format(bitname, target))
             print("INFO: Awaiting response from {0:s}... be patience ... ".format(target))
 
-            ret = self.post2fic(url, j)
+            ret = self.rest_post(url, j)
 
         else:
             print("ERROR: board {0:s} is not found".format(target), file=sys.stderr)
@@ -705,7 +708,7 @@ class ficmanage:
         ret = {'return': 'failed'}
         if target in BOARDS.keys():
             url = BOARDS[target]['url'] + '/status'
-            ret = self.get2fic(url)
+            ret = self.rest_get(url)
 
         else:
             print("ERROR: board {0:s} is not found".format(target), file=sys.stderr)
@@ -719,7 +722,7 @@ class ficmanage:
             url =  BOARDS[target]['url'] + '/fpga'
             print("INFO: Send FPGA reset to {0:s}".format(target))
 
-            ret = self.delete2fic(url)
+            ret = self.rest_delete(url)
 
         else:
             print("ERROR: board {0:s} is not found".format(target), file=sys.stderr)
@@ -742,7 +745,7 @@ class ficmanage:
                 'command': cmd,
             })
 
-            ret = self.post2fic(url, j)
+            ret = self.rest_post(url, j)
 
         else:
             print("ERROR: board {0:s} is not found".format(target), file=sys.stderr)
@@ -766,7 +769,7 @@ class ficmanage:
                 'data': data,
             })
 
-            ret = self.post2fic(url, j)
+            ret = self.rest_post(url, j)
 
         else:
             print("ERROR: board {0:s} is not found".format(target), file=sys.stderr)
@@ -794,7 +797,7 @@ class ficmanage:
                 'count': count,
             })
 
-            ret = self.post2fic(url, j)
+            ret = self.rest_post(url, j)
 
         else:
             print("ERROR: board {0:s} is not found".format(target), file=sys.stderr)
@@ -816,7 +819,7 @@ class ficmanage:
                 'address': addr,
             })
 
-            ret = self.post2fic(url, j)
+            ret = self.rest_post(url, j)
 
         else:
             print("ERROR: board {0:s} is not found".format(target), file=sys.stderr)
@@ -843,7 +846,7 @@ class ficmanage:
                 'data': val,
             })
 
-            ret = self.post2fic(url, j)
+            ret = self.rest_post(url, j)
 
         else:
             print("ERROR: board {0:s} is not found".format(target), file=sys.stderr)
@@ -863,7 +866,7 @@ class ficmanage:
 
             j = json.dumps(table)
 
-            ret = self.post2fic(url, j)
+            ret = self.rest_post(url, j)
 
         else:
             print("ERROR: board {0:s} is not found".format(target), file=sys.stderr)
