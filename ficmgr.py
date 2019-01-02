@@ -194,7 +194,7 @@ class ficmanage:
     # HTTP request handler
     #------------------------------------------------------------------------------
     def rest_post(self, url, data):
-        ret = {'return', 'failed'}
+        ret = {'return': 'failed'}
         try:
             resp = requests.post(url, data=data, headers={'Content-Type': 'application/json'})
             ret = resp.json()
@@ -206,7 +206,7 @@ class ficmanage:
 
     #------------------------------------------------------------------------------
     def rest_get(self, url):
-        ret = {'return', 'failed'}
+        ret = {'return': 'failed'}
         try:
             resp = requests.get(url, headers={'Content-Type': 'application/json'})
             ret = resp.json()
@@ -218,7 +218,7 @@ class ficmanage:
 
     #------------------------------------------------------------------------------
     def rest_delete(self, url):
-        ret = {'return', 'failed'}
+        ret = {'return': 'failed'}
         try:
             resp = requests.delete(url, headers={'Content-Type': 'application/json'})
             ret = resp.json()
@@ -250,10 +250,7 @@ class ficmanage:
             p.join()
             target, ret = q.get()
             stat[target] = ret
-            print(ret)
  
-        print("DEBUG", stat)
-
         for t in BOARDS.keys():
             if t in stat.keys():
                 if stat[t]['return'] == 'success':
