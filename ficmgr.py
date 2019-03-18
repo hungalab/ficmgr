@@ -942,7 +942,7 @@ class ficmanage:
         cmdlines = self.args.runcmd
 
         if len(cmdlines) > 1:   # Multiple cmd to multiple FiCs
-            if len(sw_files) != len(targets):
+            if len(cmdlines) != len(targets):
                 print("ERROR: Unmatch number of cmdlines and targets. Aren't you forget cmdline quoted?", file=sys.stderr)
                 return -1
 
