@@ -95,6 +95,10 @@ class ficmanage:
             metavar='MESSAGE',
             help='Message/notes for this FPGA programing')
 
+        parser.add_argument('--runcmd', nargs='+', type=str, 
+            metavar=('cmdline_for_target1', 'cmdline_for_target2'),
+            help='Run command on RPi3')
+
         #parser.add_argument('-o','--output', nargs=1, type=str)
         #parser.add_argument('infile', nargs=1, type=str)
 
@@ -871,6 +875,24 @@ class ficmanage:
         return ret
 
     #------------------------------------------------------------------------------
+    def fic_runcmd(self, target, cmdline):
+        ret = {'return': 'failed'}
+
+        if target in BOARDS.keys():
+            url = BOARDS[target]['url'] + '/runcmd'
+
+            j = json.dumps({
+                'command': cmdline
+                })
+
+            ret = self.rest_post(url, j)
+
+        else:
+            print("ERROR: board {0:s} is not found".format(target), file=sys.stderr)
+
+        return ret
+
+    #------------------------------------------------------------------------------
     def main(self):
         self.argparse()
         print(self.args)
@@ -907,6 +929,76 @@ class ficmanage:
         elif self.args.prog:            # FPGA program (-p)
             self.cmd_fic_prog()
 
+        elif self.args.runcmd:         # Run command
+            self.cmd_fic_runcmd()
+
+    #------------------------------------------------------------------------------
+    def cmd_fic_runcmd(self):
+        if self.args.target is None:
+            print("ERROR: You must specify target.", file=sys.stderr)
+            return -1
+
+        targets = self.get_target()
+        cmdlines = self.args.runcmd
+
+        if len(cmdlines) > 1:   # Multiple cmd to multiple FiCs
+            if len(sw_files) != len(targets):
+                print("ERROR: Unmatch number of cmdlines and targets. Aren't you forget cmdline quoted?", file=sys.stderr)
+                return -1
+
+            procs = []
+            q = Queue()
+            def proc(q, target, cmdline):
+                ret = self.fic_runcmd(target, cmdline)
+                q.put((target, ret))
+
+            for cmdline, t in zip(cmdlines, targets):
+                p = Process(target=proc, args=(q, t, cmdline))
+                procs.append(p)
+                p.start()
+
+            for p in procs:
+                p.join()
+                target, ret = q.get()
+
+                if ret['return'] == 'success':
+                    print("INFO: Run command on {0:s} is success".format(target))
+                    print("Stdout output:\n{0:s}".format(ret['stdout']))
+                    print("Stderr output:\n{0:s}".format(ret['stderr']))
+                    #print("{0:s}".format(ret['stderr']))
+                    print("----")
+
+                else:
+                    print("INFO: Set table on {0:s} is failed".format(target))
+
+        else:   # Single cmdline to multiple FiCs
+            cmdline = cmdlines[0]
+
+            procs = []
+            q = Queue()
+            def proc(q, target, data):
+                ret = self.fic_runcmd(target, cmdline)
+                q.put((target, ret))
+
+            for t in targets:
+                p = Process(target=proc, args=(q, t, cmdline))
+                procs.append(p)
+                p.start()
+
+            for p in procs:
+                p.join()
+                target, ret = q.get()
+
+                if ret['return'] == 'success':
+                    print("INFO: Run command on {0:s} is success".format(target))
+                    print("Stdout output:\n{0:s}".format(ret['stdout']))
+                    print("Stderr output:\n{0:s}".format(ret['stderr']))
+                    print("----")
+
+                else:
+                    print("INFO: Set table on {0:s} is failed".format(target))
+
+        return 0
 
 #    #------------------------------------------------------------------------------
 #    def test_switch():

@@ -13,6 +13,7 @@ usage: ficmgr.py [-h] [-t target1 [target2 ...]] [-l]
                  [-sw for_target1 [for_target2 ...]] [-rr ADDR]
                  [-rw ADDR VALUE] [-pm [sm16 | sm16pr | sm8 | sm8pr]]
                  [-pmsg MESSAGE]
+                 [--runcmd cmdline_for_target1 [cmdline_for_target2 ...]]
 
 ficmanager nyacom (C) December, 2018
 
@@ -41,6 +42,9 @@ optional arguments:
                         FPGA Program mode
   -pmsg MESSAGE, --message MESSAGE
                         Message/notes for this FPGA programing
+  --runcmd cmdline_for_target1 [cmdline_for_target2 ...]
+                        Run command on RPi3
+
 ```
 
 ### Get board status
@@ -104,6 +108,14 @@ optional arguments:
     INFO: FPGA configuration on fic01 is success
     INFO: FPGA configuration on fic02 is success
 ```
+
+### Run command on RPi3
+
+* with --runcmd can invoke run command on RPi on the target FiC board
+* The command line will be executing under www-data user
+* Intractive shell is unsupported (like sudo)
+* You must make every command in single line
+
 
 ### Use from python
 
