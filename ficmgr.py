@@ -694,6 +694,7 @@ class ficmanage:
                 'bitstream': b64.decode(encoding='utf-8')
             })
 
+            print("INFO: Select FPGA configuration mode: {0:s}".format(pr_mode))
             print("INFO: Send FPGA configuration {0:s} to {1:s}".format(bitname, target))
             print("INFO: Awaiting response from {0:s}... be patience ... ".format(target))
 
