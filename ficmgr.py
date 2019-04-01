@@ -971,6 +971,7 @@ class ficmanage:
 
                 else:
                     print("INFO: Run command on {0:s} is failed".format(target))
+                    print("Error message: {0:s}".format(ret['error']))
 
         else:   # Single cmdline to multiple FiCs
             cmdline = cmdlines[0]
@@ -998,6 +999,7 @@ class ficmanage:
 
                 else:
                     print("INFO: Run command on {0:s} is failed".format(target))
+                    print("Error message: {0:s}".format(ret['error']))
 
         return 0
 
