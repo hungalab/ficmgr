@@ -949,8 +949,8 @@ class ficmanage:
 
             procs = []
             q = Queue()
-            def proc(q, target, cmdline):
-                ret = self.fic_runcmd(target, cmdline)
+            def proc(q, target, cmd):
+                ret = self.fic_runcmd(target, cmd)
                 q.put((target, ret))
 
             for cmdline, t in zip(cmdlines, targets):
@@ -970,15 +970,15 @@ class ficmanage:
                     print("----")
 
                 else:
-                    print("INFO: Set table on {0:s} is failed".format(target))
+                    print("INFO: Run command on {0:s} is failed".format(target))
 
         else:   # Single cmdline to multiple FiCs
             cmdline = cmdlines[0]
 
             procs = []
             q = Queue()
-            def proc(q, target, data):
-                ret = self.fic_runcmd(target, cmdline)
+            def proc(q, target, cmd):
+                ret = self.fic_runcmd(target, cmd)
                 q.put((target, ret))
 
             for t in targets:
@@ -997,7 +997,7 @@ class ficmanage:
                     print("----")
 
                 else:
-                    print("INFO: Set table on {0:s} is failed".format(target))
+                    print("INFO: Run command on {0:s} is failed".format(target))
 
         return 0
 
