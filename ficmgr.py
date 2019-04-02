@@ -99,6 +99,10 @@ class ficmanage:
             metavar=('cmdline_for_target1', 'cmdline_for_target2'),
             help='Run command on RPi3')
 
+        parser.add_argument('--runcmdtimeout', nargs='?', type=int, 
+            metavar='Timeout sec',
+            help='Run command timeout in second (default is 5sec)')
+
         #parser.add_argument('-o','--output', nargs=1, type=str)
         #parser.add_argument('infile', nargs=1, type=str)
 
@@ -106,6 +110,7 @@ class ficmanage:
 
     #------------------------------------------------------------------------------
     # Analyse target from cmdline argument
+    # Note: self.args.url value priotize if it has set
     #------------------------------------------------------------------------------
     def get_target(self):
         if self.args.target != None:
@@ -265,7 +270,7 @@ class ficmanage:
 
                 else:
                     print('{0:s}:\n'.format(t), end='')
-                    print('    get status failed.\n\n')
+                    print('ERROR: get status failed.\n\n')
 
     #------------------------------------------------------------------------------
     def cmd_fic_reset(self):
@@ -876,14 +881,15 @@ class ficmanage:
         return ret
 
     #------------------------------------------------------------------------------
-    def fic_runcmd(self, target, cmdline):
+    def fic_runcmd(self, target, cmdline, timeout):
         ret = {'return': 'failed'}
 
         if target in BOARDS.keys():
             url = BOARDS[target]['url'] + '/runcmd'
 
             j = json.dumps({
-                'command': cmdline
+                'command': cmdline,
+                'timeout': timeout 
                 })
 
             ret = self.rest_post(url, j)
@@ -935,12 +941,20 @@ class ficmanage:
 
     #------------------------------------------------------------------------------
     def cmd_fic_runcmd(self):
+
+        #--------------------------------------------------------------------------
+        def sub_proc(q, target, cmd, tout):
+            ret = self.fic_runcmd(target, cmd, tout)
+            q.put((target, ret))
+        #--------------------------------------------------------------------------
+
         if self.args.target is None:
             print("ERROR: You must specify target.", file=sys.stderr)
             return -1
 
-        targets = self.get_target()
+        targets  = self.get_target()
         cmdlines = self.args.runcmd
+        timeout  = self.args.runcmdtimeout
 
         if len(cmdlines) > 1:   # Multiple cmd to multiple FiCs
             if len(cmdlines) != len(targets):
@@ -949,12 +963,8 @@ class ficmanage:
 
             procs = []
             q = Queue()
-            def proc(q, target, cmd):
-                ret = self.fic_runcmd(target, cmd)
-                q.put((target, ret))
-
             for cmdline, t in zip(cmdlines, targets):
-                p = Process(target=proc, args=(q, t, cmdline))
+                p = Process(target=sub_proc, args=(q, t, cmdline, timeout))
                 procs.append(p)
                 p.start()
 
@@ -964,26 +974,24 @@ class ficmanage:
 
                 if ret['return'] == 'success':
                     print("INFO: Run command on {0:s} is success".format(target))
+                    print("----")
                     print("Stdout output:\n{0:s}".format(ret['stdout']))
                     print("Stderr output:\n{0:s}".format(ret['stderr']))
-                    #print("{0:s}".format(ret['stderr']))
-                    print("----")
 
                 else:
                     print("INFO: Run command on {0:s} is failed".format(target))
-                    print("Error message: {0:s}".format(ret['error']))
+                    print("INFO: {0:s}".format(ret['error']))
+                    print("----")
+                    print("Stdout output:\n{0:s}".format(ret['stdout']))
+                    print("Stderr output:\n{0:s}".format(ret['stderr']))
 
         else:   # Single cmdline to multiple FiCs
             cmdline = cmdlines[0]
 
             procs = []
             q = Queue()
-            def proc(q, target, cmd):
-                ret = self.fic_runcmd(target, cmd)
-                q.put((target, ret))
-
             for t in targets:
-                p = Process(target=proc, args=(q, t, cmdline))
+                p = Process(target=sub_proc, args=(q, t, cmdline, timeout))
                 procs.append(p)
                 p.start()
 
@@ -991,15 +999,28 @@ class ficmanage:
                 p.join()
                 target, ret = q.get()
 
+                stdout = ret['stdout']
+                stderr = ret['stderr']
+
+                if stdout is None:
+                    stdout = ""
+
+                if stderr is None:
+                    stderr = ""
+
+
                 if ret['return'] == 'success':
                     print("INFO: Run command on {0:s} is success".format(target))
-                    print("Stdout output:\n{0:s}".format(ret['stdout']))
-                    print("Stderr output:\n{0:s}".format(ret['stderr']))
                     print("----")
+                    print("Stdout output:\n{0:s}".format(stdout))
+                    print("Stderr output:\n{0:s}".format(stderr))
 
                 else:
                     print("INFO: Run command on {0:s} is failed".format(target))
-                    print("Error message: {0:s}".format(ret['error']))
+                    print("INFO: {0:s}".format(ret['error']))
+                    print("----")
+                    print("Stdout output:\n{0:s}".format(stdout))
+                    print("Stderr output:\n{0:s}".format(stderr))
 
         return 0
 
