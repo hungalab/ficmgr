@@ -504,7 +504,7 @@ class ficmanage:
             print("ERROR: You must specify target.", file=sys.stderr)
             return -1
 
-        target = self.get_target()
+        targets = self.get_target()
         arg1 = self.args.hlsrecv[0]
 
         count = 0
@@ -521,12 +521,12 @@ class ficmanage:
 
         procs = []
         q = Queue()
-        def proc(q, cmd):
-            ret = self.fic_hls_recv(count)
-            q.put((target, ret))
+        def proc(q, t, cmd):
+            ret = self.fic_hls_recv(t, count)
+            q.put((targets, ret))
 
         for t in targets:
-            p = Process(target=proc, args=(q, count))
+            p = Process(target=proc, args=(q, t, count))
             procs.append(p)
             p.start()
 
@@ -537,7 +537,8 @@ class ficmanage:
                 print(ret)
 
             else:
-                print("INFO: HLS data receive failed on {0:s}".format(target))
+                for t in targets:
+                    print("INFO: HLS data receive failed on {0:s}".format(t))
 
         #procs = []
         #for t in target:
@@ -799,7 +800,7 @@ class ficmanage:
             url =  BOARDS[target]['url'] + '/hls'
             print("INFO: Send HLS command to {0:s}".format(target))
 
-            j = json.dump({
+            j = json.dumps({
                 'command': 'receive4',
                 'count': count,
             })
