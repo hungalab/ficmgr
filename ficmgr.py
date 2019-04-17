@@ -41,6 +41,8 @@ BOARDS = {
     'fic06' : { 'url' : BASE_URI + '/fic06' },
     'fic07' : { 'url' : BASE_URI + '/fic07' },
     'fic08' : { 'url' : BASE_URI + '/fic08' },
+    'm2fic12' : { 'url' : BASE_URI + '/m2fic12' },
+    'm2fic13' : { 'url' : BASE_URI + '/m2fic13' },
 }
 
 #------------------------------------------------------------------------------
@@ -772,7 +774,7 @@ class ficmanage:
             print("INFO: Send HLS command to {0:s}".format(target))
 
             j = json.dump({
-                'command': 'send4',
+                'command': 'send',
                 'data': data,
             })
 
@@ -800,7 +802,7 @@ class ficmanage:
             print("INFO: Send HLS command to {0:s}".format(target))
 
             j = json.dump({
-                'command': 'receive4',
+                'command': 'receive',
                 'count': count,
             })
 
