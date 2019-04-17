@@ -464,7 +464,7 @@ class ficmanage:
             print("ERROR: You must specify target.", file=sys.stderr)
             return -1
 
-        target = self.get_target()
+        targets = self.get_target()
 
         cmd = self.args.hlscmd[0]
         if cmd not in ['start', 'reset']:
@@ -473,12 +473,12 @@ class ficmanage:
 
         procs = []
         q = Queue()
-        def proc(q, cmd):
-            ret = self.fic_hls_cmd(cmd)
+        def proc(q, target, cmd):
+            ret = self.fic_hls_cmd(target, cmd)
             q.put((target, ret))
 
         for t in targets:
-            p = Process(target=proc, args=(q, cmd))
+            p = Process(target=proc, args=(q, t, cmd))
             procs.append(p)
             p.start()
 
@@ -750,7 +750,7 @@ class ficmanage:
             url =  BOARDS[target]['url'] + '/hls'
             print("INFO: Send HLS command to {0:s}".format(target))
 
-            j = json.dump({
+            j = json.dumps({
                 'command': cmd,
             })
 
