@@ -33,6 +33,7 @@ BASE_URI = 'http://zeus.am.ics.keio.ac.jp'
 #BASE_URI = 'http://172.20.2.2'
 #------------------------------------------------------------------------------
 BOARDS = {
+    'fic00' : { 'url' : BASE_URI + '/fic00' },
     'fic01' : { 'url' : BASE_URI + '/fic01' },
     'fic02' : { 'url' : BASE_URI + '/fic02' },
     'fic03' : { 'url' : BASE_URI + '/fic03' },
@@ -40,7 +41,6 @@ BOARDS = {
     'fic05' : { 'url' : BASE_URI + '/fic05' },
     'fic06' : { 'url' : BASE_URI + '/fic06' },
     'fic07' : { 'url' : BASE_URI + '/fic07' },
-    'fic08' : { 'url' : BASE_URI + '/fic08' },
     'm2fic12' : { 'url' : BASE_URI + '/m2fic12' },
     'm2fic13' : { 'url' : BASE_URI + '/m2fic13' },
 }
