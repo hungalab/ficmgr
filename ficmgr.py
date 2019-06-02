@@ -49,7 +49,7 @@ BOARDS = {
     'fic13' : { 'url' : BASE_URI + '/fic13' },
     'm2fic00' : { 'url' : BASE_URI + '/m2fic00' },
     'm2fic01' : { 'url' : BASE_URI + '/m2fic01' },
-    'm2fic01' : { 'url' : BASE_URI + '/m2fic02' },
+    'm2fic02' : { 'url' : BASE_URI + '/m2fic02' },
     'm2fic03' : { 'url' : BASE_URI + '/m2fic03' },
     'm2fic04' : { 'url' : BASE_URI + '/m2fic04' },
     'm2fic05' : { 'url' : BASE_URI + '/m2fic05' },
