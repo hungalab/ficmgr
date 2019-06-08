@@ -41,8 +41,24 @@ BOARDS = {
     'fic05' : { 'url' : BASE_URI + '/fic05' },
     'fic06' : { 'url' : BASE_URI + '/fic06' },
     'fic07' : { 'url' : BASE_URI + '/fic07' },
-    'm2fic12' : { 'url' : BASE_URI + '/m2fic12' },
-    'm2fic13' : { 'url' : BASE_URI + '/m2fic13' },
+    'fic08' : { 'url' : BASE_URI + '/fic08' },
+    'fic09' : { 'url' : BASE_URI + '/fic09' },
+    'fic10' : { 'url' : BASE_URI + '/fic10' },
+    'fic11' : { 'url' : BASE_URI + '/fic11' },
+    'fic12' : { 'url' : BASE_URI + '/fic12' },
+    'fic13' : { 'url' : BASE_URI + '/fic13' },
+    'm2fic00' : { 'url' : BASE_URI + '/m2fic00' },
+    'm2fic01' : { 'url' : BASE_URI + '/m2fic01' },
+    'm2fic02' : { 'url' : BASE_URI + '/m2fic02' },
+    'm2fic03' : { 'url' : BASE_URI + '/m2fic03' },
+    'm2fic04' : { 'url' : BASE_URI + '/m2fic04' },
+    'm2fic05' : { 'url' : BASE_URI + '/m2fic05' },
+    'm2fic06' : { 'url' : BASE_URI + '/m2fic06' },
+    'm2fic07' : { 'url' : BASE_URI + '/m2fic07' },
+    'm2fic08' : { 'url' : BASE_URI + '/m2fic08' },
+    'm2fic09' : { 'url' : BASE_URI + '/m2fic09' },
+    'm2fic10' : { 'url' : BASE_URI + '/m2fic10' },
+    'm2fic11' : { 'url' : BASE_URI + '/m2fic11' },
 }
 
 #------------------------------------------------------------------------------
@@ -703,7 +719,7 @@ class ficmanage:
 
             print("INFO: Select FPGA configuration mode: {0:s}".format(pr_mode))
             print("INFO: Send FPGA configuration {0:s} to {1:s}".format(bitname, target))
-            print("INFO: Awaiting response from {0:s}... be patience ... ".format(target))
+            print("INFO: Awaiting response from {0:s}... be patient ... ".format(target))
 
             ret = self.rest_post(url, j)
 
