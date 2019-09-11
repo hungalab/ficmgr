@@ -403,7 +403,7 @@ class ficmanage:
         targets = self.get_target()
 
         pr_mode = 'sm16'
-        memo = 'Configure via ficdeploy by {0:s}@{1:s}'.format(os.getlogin(), os.uname()[1])
+        memo = 'Configure via ficmanager by {0:s}@{1:s}'.format(os.getlogin(), os.uname()[1])
 
         if self.args.progmode != None:
             pr_mode = self.args.progmode[0]
@@ -522,7 +522,7 @@ class ficmanage:
             print("ERROR: You must specify target.", file=sys.stderr)
             return -1
 
-        target = self.get_target()
+        targets = self.get_target()
         arg1 = self.args.hlsrecv[0]
 
         count = 0
@@ -539,12 +539,12 @@ class ficmanage:
 
         procs = []
         q = Queue()
-        def proc(q, cmd):
-            ret = self.fic_hls_recv(count)
+        def proc(q, target, count):
+            ret = self.fic_hls_recv(target, count)
             q.put((target, ret))
 
         for t in targets:
-            p = Process(target=proc, args=(q, count))
+            p = Process(target=proc, args=(q, t, count))
             procs.append(p)
             p.start()
 
@@ -789,7 +789,7 @@ class ficmanage:
             url =  BOARDS[target]['url'] + '/hls'
             print("INFO: Send HLS command to {0:s}".format(target))
 
-            j = json.dump({
+            j = json.dumps({
                 'command': 'send',
                 'data': data,
             })
@@ -817,7 +817,7 @@ class ficmanage:
             url =  BOARDS[target]['url'] + '/hls'
             print("INFO: Send HLS command to {0:s}".format(target))
 
-            j = json.dump({
+            j = json.dumps({
                 'command': 'receive',
                 'count': count,
             })
@@ -1114,9 +1114,3 @@ class ficmanage:
 if __name__ == '__main__':
     obj = ficmanage()
     obj.main()
-
-#    test_fpga()
-#    test_status()
-
-#    test_switch()
-#    test_hls()
