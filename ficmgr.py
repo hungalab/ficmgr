@@ -168,18 +168,37 @@ class ficmanage:
     # Parsing HLS datafile
     #------------------------------------------------------------------------------
     def check_swconfig(self, conf):
-        if 'ports' not in conf.keys():
-            print("ERROR: Not number of ports defined", file=sys.stderr)
-            return -1
+        # If tablefile is specified, file input is priotize
+        if 'tablefile' in conf.keys():
+            tblf = conf['tablefile']
+            with open(tblf, 'rt') as f:
+                try:
+                    j = json.loads(f.read())
 
-        if 'slots' not in conf.keys():
-            print("ERROR: Not number of slots defined", file=sys.stderr)
-            return -1
+                except json.JSONDecodeError as e:
+                    print("ERROR: JSON error", file=sys.stderr)
+                    print(e, file=sys.stderr)
+                    return -1 
 
-        if 'outputs' not in conf.keys():
-            print("ERROR: No outputs defined", file=sys.stderr)
-            return -1
+                if self.check_swconfig(j) < 0:
+                    return -1 
 
+            return 0
+
+        else:
+            if 'ports' not in conf.keys():
+                print("ERROR: Not number of ports defined", file=sys.stderr)
+                return -1
+
+            if 'slots' not in conf.keys():
+                print("ERROR: Not number of slots defined", file=sys.stderr)
+                return -1
+
+            if 'outputs' not in conf.keys():
+                print("ERROR: No outputs defined", file=sys.stderr)
+                return -1
+
+        print(conf)
         tbl = conf['table']
         try:
             num_slots = conf['slots']
@@ -959,13 +978,18 @@ class ficmanage:
         ret = {'return': 'failed'}
 
         if self.check_swconfig(table) < 0:
-            print(table)
             return ret
 
         if target in BOARDS.keys():
             url = BOARDS[target]['url'] + '/switch'
 
-            j = json.dumps(table)
+            if 'tablefile' in table.keys():
+                tblf = table['tablefile']
+                with open(tblf, 'rt') as f:
+                    j = json.loads(f.read())
+
+            else:
+                j = json.dumps(table)
 
             ret = self.rest_post(url, j)
 
