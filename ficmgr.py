@@ -121,6 +121,10 @@ class ficmanage:
             metavar='Timeout sec',
             help='Run command timeout in second (default is 5sec)')
 
+        parser.add_argument('-f', '--conf', nargs=1, type=str, 
+            metavar='FiCSW configuration setup file',
+            help='Configure FiCSW with configuration setup file (.json)')
+
         #parser.add_argument('-o','--output', nargs=1, type=str)
         #parser.add_argument('infile', nargs=1, type=str)
 
@@ -176,30 +180,36 @@ class ficmanage:
             print("ERROR: No outputs defined", file=sys.stderr)
             return -1
 
-        tbl = conf['outputs']
-
+        tbl = conf['table']
         try:
-            slots = conf['slots']
-            ports = conf['ports']
+            num_slots = conf['slots']
+            num_ports = conf['ports']
+            num_outs = conf['outputs']
         
         except ValueError:
-            print("ERROR: Invalid port/slot number", file=sys.stderr)
+            print("ERROR: Invalid port/slot or outputs number", file=sys.stderr)
             return -1
 
-        if len(tbl) != ports:
-            print("ERROR: Insufficient number of ports defined in the table", file=sys.stderr)
+        if len(tbl) != num_outs:
+            print("ERROR: Insufficient number of outputs defined in the table", file=sys.stderr)
             return -1
 
-        for p in tbl:
-            output = tbl[p]
-            if len(output) != slots:
-                print("ERROR: Insufficient number of slots defined in the table", file=sys.stderr)
+        for out in tbl:
+            ports = tbl[out]
+            if len(ports) != num_ports:
+                print("ERROR: Insufficient number of ports defined in the {0}".format(out), file=sys.stderr)
                 return -1
 
-            for s, v in output.items():
-                if type(v) is not int:
-                    print("ERROR: Value in Port {0:s} Slot {1:s} is invalid".format(p, s), file=sys.stderr)
+            for port in ports:
+                slots = ports[port]
+                if len(slots) != num_slots:
+                    print("ERROR: Insufficient number of slots defined in the table", file=sys.stderr)
                     return -1
+
+                for s, v in slots.items():
+                    if type(v) is not int:
+                        print("ERROR: Value in Output {0} Port {1} Slot {2} is invalid".format(out, port, s), file=sys.stderr)
+                        return -1
 
         return 0
 
@@ -213,6 +223,72 @@ class ficmanage:
             return None
 
         if self.check_swconfig(j) < 0:
+            return None
+
+        return j
+
+    #------------------------------------------------------------------------------
+    # Parsing FiCSW configuration setup JSON
+    #------------------------------------------------------------------------------
+    def check_setupconfig(self, conf):
+        # check target name)
+        for target, attrs in conf.items():
+            if target not in BOARDS:
+                print("ERROR: {0} is unknown target".format(target), file=sys.stderr)
+                return -1
+
+            # check 'fpga' if exist
+            if 'fpga' in attrs:
+                fpga = attrs['fpga']
+                if 'bitstream' not in fpga.keys():
+                    print("ERROR: For {0}, must specify bitstream".format(target), file=sys.stderr)
+                    return -1
+
+                if os.path.exists(fpga['bitstream']) == False:
+                    print("ERROR: {0} is not exist".format(fpga['bitstream']), file=sys.stderr)
+                    return -1
+
+                if 'progmode' not in fpga.keys():
+                    print("ERROR: For {0}, must specify progmode".format(target), file=sys.stderr)
+                    return -1
+                
+                if fpga['progmode'] not in ['sm16', 'sm16pr', 'sm8', 'sm8pr']:
+                    print("ERROR: progmode {0} is invalid".format(fpga['progmode']), file=sys.stderr)
+                    return -1
+
+            # check 'switch' if exist
+            if 'switch' in attrs:
+                switch = attrs['switch']
+                if self.check_swconfig(switch) < 0:
+                    return -1
+
+            # check 'option' if exist
+            if 'option' in attrs:
+                option = attrs['option']
+                if "auto_hls_reset_start" in option.keys():
+                    if option["auto_hls_reset_start"] not in {True, False}:
+                        print("ERROR: Value in auto_hls_reset_start {0} is invalid".format(
+                            option["auto_hls_reset_start"]), file=sys.stderr)
+                        return -1
+
+                if "auto_runcmd" in option.keys():
+                    if type(option["auto_runcmd"]) is not str:
+                        print("ERROR: Value in auto_runcmd {0} is invalid".format(
+                            option["auto_runcmd"]), file=sys.stderr)
+                        return -1
+
+        return 0
+
+    def parse_setupconfigfile(self, buf):
+        try:
+            j = json.loads(buf)
+
+        except json.JSONDecodeError as e:
+            print("ERROR: JSON error", file=sys.stderr)
+            print(e, file=sys.stderr)
+            return None
+
+        if self.check_setupconfig(j) < 0:
             return None
 
         return j
@@ -956,6 +1032,104 @@ class ficmanage:
 
         elif self.args.runcmd:         # Run command
             self.cmd_fic_runcmd()
+
+        elif self.args.conf:
+            self.cmd_fic_setup()       # Setup with configuration file
+
+    #------------------------------------------------------------------------------
+    def cmd_fic_setup(self):
+        conf_file = self.args.conf[0]
+        with open(conf_file, 'rt') as f:
+            data = self.parse_setupconfigfile(f.read())
+            f.close()
+
+            if data is None:
+                return -1
+
+            procs = []
+            q = Queue()
+            #------------------------------------------------------------------
+            def proc(q, target, conf):
+                # config FPGA
+                if 'fpga' in conf:
+                    print('INFO: FPGA config on {0}'.format(target))
+                    fpga = conf['fpga']
+                    bs_file = fpga['bitstream']
+                    pr_mode = fpga['progmode']
+                    msg = ''
+                    if 'msg' in fpga.keys():
+                        msg = fpga['msg']
+
+                    bitname = os.path.basename(bs_file)
+                    with open(bs_file, 'rb') as f:
+                        b64 = base64.b64encode(f.read())
+                        f.close()
+                        ret = self.fic_prog(target, pr_mode, bitname, b64, msg)
+                        if ret['return'] != 'success':
+                            q.put((target, ret))
+                            return
+
+                # config TABLE
+                if 'switch' in conf:
+                    print('INFO: Switch config on {0}'.format(target))
+                    switch = conf['switch']
+                    ret = self.fic_setsw(target, switch)
+                    if ret['return'] != 'success':
+                        q.put((target, ret))
+                        return
+
+                # config OPTION
+                if 'option' in conf:
+                    print('INFO: Option setting on {0}'.format(target))
+                    option = conf['option']
+                    if 'auto_hls_reset_start' in option.keys():
+                        ret = self.fic_hls_cmd(target, 'reset')
+                        ret = self.fic_hls_cmd(target, 'start')
+                        if ret['return'] != 'success':
+                            q.put((target, ret))
+                            return
+
+                    if 'auto_runcmd' in option.keys():
+                        ret = self.fic_runcmd(target, option['auto_runcmd'], 5)
+                        stdout = ret['stdout']
+                        stderr = ret['stderr']
+
+                        if stdout is None:
+                            stdout = ""
+
+                        if stderr is None:
+                            stderr = ""
+
+                        if ret['return'] == 'success':
+                            print("INFO: Run command on {0:s} is success".format(target))
+                            print("----")
+                            print("Stdout output:\n{0:s}".format(stdout))
+                            print("Stderr output:\n{0:s}".format(stderr))
+
+                        else:
+                            print("INFO: Run command on {0:s} is failed".format(target))
+                            print("INFO: {0:s}".format(ret['error']))
+                            print("----")
+                            print("Stdout output:\n{0:s}".format(stdout))
+                            print("Stderr output:\n{0:s}".format(stderr))
+
+                    q.put((target, {'return': 'success'}))
+                    return 0
+
+            #------------------------------------------------------------------
+            for t, v in data.items():
+                p = Process(target=proc, args=(q, t, v))
+                procs.append(p)
+                p.start()
+
+            for p in procs:
+                p.join()
+                target, ret = q.get()
+                if ret['return'] == 'success':
+                    print("INFO: Setup on {0:s} is success".format(target))
+
+                else:
+                    print("INFO: Setup on {0:s} is failed".format(target))
 
     #------------------------------------------------------------------------------
     def cmd_fic_runcmd(self):

@@ -44,6 +44,8 @@ optional arguments:
                         Message/notes for this FPGA programing
   --runcmd cmdline_for_target1 [cmdline_for_target2 ...]
                         Run command on RPi3
+  -f, --conf FiCSW configuration setup file, --conf FiCSW configuration setup file
+                        Configure FiCSW with configuration setup file (.json)
 
 ```
 
@@ -131,5 +133,83 @@ optional arguments:
   * fic_regwrite(self, target, addr, val)
   * fic_setsw(self, target, table)
 
-## Disclaimer
-* I am okay if any fic member does not understand what I said, what I effort to do the eco system becoming better, how system deployment is harder. F*** y**.
+### JSON bulk setup file
+
+* To setup multiple FiC boards in one time, you can define *.json to setup
+
+#### Options
+* auto_hls_reset_start ... Assert ap_reset and ap_start automatically after configuration
+* auto_runcmd ... Run command on RPi after configuration
+
+#### Example JSON for setup fic08 and fic09
+````
+{
+    "fic08":{
+        "fpga":{
+            "bitstream": "/home/hlab/nyacom/project/fic/ficwww/fic_top.bin",
+            "progmode": "sm8",
+            "msg" : "ficmgr TEST"
+        },
+        "switch": {
+            "slots": 1,
+            "ports": 4,
+            "outputs": 1,
+            "table": {
+                "output0": {
+                    "port0": {
+                        "slot0": 0
+                    },
+                    "port1": {
+                        "slot0": 0
+                    },
+                    "port2": {
+                        "slot0": 0
+                    },
+                    "port3": {
+                        "slot0": 0
+                    }
+                }
+            }
+        },
+        "option": {
+            "auto_hls_reset_start": true,
+            "auto_runcmd": "cat /proc/cpuinfo"
+        }
+    },
+
+   "fic09":{
+        "fpga":{
+            "bitstream": "/home/hlab/nyacom/project/fic/ficwww/fic_top.bin",
+            "progmode": "sm8",
+            "msg" : "ficmgr TEST"
+        },
+        "switch": {
+            "slots": 1,
+            "ports": 4,
+            "outputs": 1,
+            "table": {
+                "output0": {
+                    "port0": {
+                        "slot0": 0
+                    },
+                    "port1": {
+                        "slot0": 0
+                    },
+                    "port2": {
+                        "slot0": 0
+                    },
+                    "port3": {
+                        "slot0": 0
+                    }
+                }
+            }
+        },
+        "option": {
+            "auto_hls_reset_start": true,
+            "auto_runcmd": "cat /proc/cpuinfo"
+        }
+    }
+}
+
+````
+
