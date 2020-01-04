@@ -986,7 +986,7 @@ class ficmanage:
             if 'tablefile' in table.keys():
                 tblf = table['tablefile']
                 with open(tblf, 'rt') as f:
-                    j = json.loads(f.read())
+                    j = json.dumps(json.loads(f.read()))
 
             else:
                 j = json.dumps(table)
@@ -1137,8 +1137,9 @@ class ficmanage:
                             print("Stdout output:\n{0:s}".format(stdout))
                             print("Stderr output:\n{0:s}".format(stderr))
 
-                    q.put((target, {'return': 'success'}))
-                    return 0
+                # Normal exit
+                q.put((target, {'return': 'success'}))
+                return
 
             #------------------------------------------------------------------
             for t, v in data.items():
