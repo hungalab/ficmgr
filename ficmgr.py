@@ -8,6 +8,7 @@ import base64
 import requests
 import json
 import simplejson
+import gzip
 
 import argparse
 import pdb
@@ -517,13 +518,13 @@ class ficmanage:
             procs = []
             q = Queue()
             def proc(q, target, pr_mode, bitname, b64, msg):
-                ret = self.fic_prog(target, pr_mode, bitname, b64, msg)
+                ret = self.fic_prog(target, pr_mode, True, bitname, b64, msg)
                 q.put((target, ret))
 
             for bs, t in zip(bs_files, targets):
                 bitname = os.path.basename(bs)
                 with open(bs, 'rb') as f:
-                    b64 = base64.b64encode(f.read())
+                    b64 = base64.b64encode(gzip.compress(f.read()))
                     f.close()
 
                     p = Process(target=proc, args=(q, t, pr_mode, bitname, b64, memo))
@@ -543,13 +544,13 @@ class ficmanage:
         else:   # Single file to multiple FPGAs
             bitname = os.path.basename(bs_files[0])
             with open(bs_files[0], 'rb') as f:
-                b64 = base64.b64encode(f.read())
+                b64 = base64.b64encode(gzip.compress(f.read()))
                 f.close()
 
                 procs = []
                 q = Queue()
                 def proc(q, target, pr_mode, bitname, b64, msg):
-                    ret = self.fic_prog(target, pr_mode, bitname, b64, msg)
+                    ret = self.fic_prog(target, pr_mode, True, bitname, b64, msg)
                     q.put((target, ret))
 
                 for t in targets:
@@ -801,13 +802,14 @@ class ficmanage:
         return 0
 
     #------------------------------------------------------------------------------
-    def fic_prog(self, target, pr_mode, bitname, b64, memo):
+    def fic_prog(self, target, pr_mode, compress, bitname, b64, memo):
         ret = {'return': 'failed'}
         if target in BOARDS.keys():
             url =  BOARDS[target]['url'] + '/fpga'
             j = json.dumps({
                 'mode': pr_mode,
                 'bitname': bitname,
+                'compress': compress,
                 'memo': memo,
                 'bitstream': b64.decode(encoding='utf-8')
             })
@@ -1086,9 +1088,9 @@ class ficmanage:
 
                     bitname = os.path.basename(bs_file)
                     with open(bs_file, 'rb') as f:
-                        b64 = base64.b64encode(f.read())
+                        b64 = base64.b64encode(gzip.compress(f.read()))
                         f.close()
-                        ret = self.fic_prog(target, pr_mode, bitname, b64, msg)
+                        ret = self.fic_prog(target, pr_mode, True, bitname, b64, msg)
                         if ret['return'] != 'success':
                             q.put((target, ret))
                             return
