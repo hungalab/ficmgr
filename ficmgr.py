@@ -9,6 +9,7 @@ import requests
 import json
 import simplejson
 import gzip
+import getpass
 
 import argparse
 import pdb
@@ -26,46 +27,17 @@ from pprint import pprint
 from multiprocessing import Process, Queue
 
 #------------------------------------------------------------------------------
+import libficmgr
+mgr = libficmgr.libficmgr()
+
+#------------------------------------------------------------------------------
 VER_STR = 'ficmanager nyacom (C) December, 2018'
+DDR_TRANSFER_BLOCK_SIZE = 1024*1024*8
 
 #------------------------------------------------------------------------------
-# Define board and board uri
-BASE_URI = 'http://zeus.am.ics.keio.ac.jp'
-#BASE_URI = 'http://172.20.2.2'
-#------------------------------------------------------------------------------
-BOARDS = {
-    'fic00' : { 'url' : BASE_URI + '/fic00' },
-    'fic01' : { 'url' : BASE_URI + '/fic01' },
-    'fic02' : { 'url' : BASE_URI + '/fic02' },
-    'fic03' : { 'url' : BASE_URI + '/fic03' },
-    'fic04' : { 'url' : BASE_URI + '/fic04' },
-    'fic05' : { 'url' : BASE_URI + '/fic05' },
-    'fic06' : { 'url' : BASE_URI + '/fic06' },
-    'fic07' : { 'url' : BASE_URI + '/fic07' },
-    'fic08' : { 'url' : BASE_URI + '/fic08' },
-    'fic09' : { 'url' : BASE_URI + '/fic09' },
-    'fic10' : { 'url' : BASE_URI + '/fic10' },
-    'fic11' : { 'url' : BASE_URI + '/fic11' },
-    'fic12' : { 'url' : BASE_URI + '/fic12' },
-    'fic13' : { 'url' : BASE_URI + '/fic13' },
-    'm2fic00' : { 'url' : BASE_URI + '/m2fic00' },
-    'm2fic01' : { 'url' : BASE_URI + '/m2fic01' },
-    'm2fic02' : { 'url' : BASE_URI + '/m2fic02' },
-    'm2fic03' : { 'url' : BASE_URI + '/m2fic03' },
-    'm2fic04' : { 'url' : BASE_URI + '/m2fic04' },
-    'm2fic05' : { 'url' : BASE_URI + '/m2fic05' },
-    'm2fic06' : { 'url' : BASE_URI + '/m2fic06' },
-    'm2fic07' : { 'url' : BASE_URI + '/m2fic07' },
-    'm2fic08' : { 'url' : BASE_URI + '/m2fic08' },
-    'm2fic09' : { 'url' : BASE_URI + '/m2fic09' },
-    'm2fic10' : { 'url' : BASE_URI + '/m2fic10' },
-    'm2fic11' : { 'url' : BASE_URI + '/m2fic11' },
-}
-
-#------------------------------------------------------------------------------
-class ficmanage:
+class ficmgr_cli:
     def __init__(self):
-        args = None
+        self.args = None
 
     def argparse(self):
         parser = argparse.ArgumentParser(description = VER_STR)
@@ -106,6 +78,14 @@ class ficmanage:
             metavar=('ADDR', 'VALUE'),
             help='FiC register write to [address value]')
 
+        parser.add_argument('-dr', '--ddrread', nargs=2, type=str, 
+            metavar=('ADDR', 'SIZE'),
+            help='Read SIZE byte data from DDR in ADDRess')
+
+        parser.add_argument('-dw', '--ddrwrite', nargs=2, type=str, 
+            metavar=('ADDR', 'FILE'),
+            help='Write FILE data to DDR in ADDRess')
+
         parser.add_argument('-pm', '--progmode', nargs=1, type=str, 
             metavar='[ sm16 | sm16pr | sm8 | sm8pr ]',
             help='FPGA Program mode')
@@ -138,219 +118,15 @@ class ficmanage:
     def get_target(self):
         if self.args.target != None:
             for t in self.args.target:
-                if t not in BOARDS.keys():
+                if t not in mgr.board:
                     print("ERROR: board {0:s} is unknown".format(t), file=sys.stderr)
                     return None
             
             return self.args.target
 
         else:
-            return BOARDS.keys()
+            return mgr.board
 
-    #------------------------------------------------------------------------------
-    # Parsing HLS datafile
-    #------------------------------------------------------------------------------
-    def parse_datafile(self, buf):
-        ret = []
-        for line, h in enumerate(buf.split('\n')):
-            h = h.strip()
-            for v in h.split(','):
-                if len(v) > 0:
-                    try:
-                        val = int(v, 0)
-                        ret.append(val)
-                    except ValueError:
-                        print("ERROR: in data file line {0:d}".format(line), file=sys.stderr)
-                        return None
-
-        return ret
-
-    #------------------------------------------------------------------------------
-    # Parsing HLS datafile
-    #------------------------------------------------------------------------------
-    def check_swconfig(self, conf):
-        # If tablefile is specified, file input is priotize
-        if 'tablefile' in conf.keys():
-            tblf = conf['tablefile']
-            with open(tblf, 'rt') as f:
-                try:
-                    j = json.loads(f.read())
-
-                except json.JSONDecodeError as e:
-                    print("ERROR: JSON error", file=sys.stderr)
-                    print(e, file=sys.stderr)
-                    return -1 
-
-                if self.check_swconfig(j) < 0:
-                    return -1 
-
-            return 0
-
-        else:
-            if 'ports' not in conf.keys():
-                print("ERROR: Not number of ports defined", file=sys.stderr)
-                return -1
-
-            if 'slots' not in conf.keys():
-                print("ERROR: Not number of slots defined", file=sys.stderr)
-                return -1
-
-            if 'outputs' not in conf.keys():
-                print("ERROR: No outputs defined", file=sys.stderr)
-                return -1
-
-        print(conf)
-        tbl = conf['table']
-        try:
-            num_slots = conf['slots']
-            num_ports = conf['ports']
-            num_outs = conf['outputs']
-        
-        except ValueError:
-            print("ERROR: Invalid port/slot or outputs number", file=sys.stderr)
-            return -1
-
-        if len(tbl) != num_outs:
-            print("ERROR: Insufficient number of outputs defined in the table", file=sys.stderr)
-            return -1
-
-        for out in tbl:
-            ports = tbl[out]
-            if len(ports) != num_ports:
-                print("ERROR: Insufficient number of ports defined in the {0}".format(out), file=sys.stderr)
-                return -1
-
-            for port in ports:
-                slots = ports[port]
-                if len(slots) != num_slots:
-                    print("ERROR: Insufficient number of slots defined in the table", file=sys.stderr)
-                    return -1
-
-                for s, v in slots.items():
-                    if type(v) is not int:
-                        print("ERROR: Value in Output {0} Port {1} Slot {2} is invalid".format(out, port, s), file=sys.stderr)
-                        return -1
-
-        return 0
-
-    def parse_swconfigfile(self, buf):
-        try:
-            j = json.loads(buf)
-
-        except json.JSONDecodeError as e:
-            print("ERROR: JSON error", file=sys.stderr)
-            print(e, file=sys.stderr)
-            return None
-
-        if self.check_swconfig(j) < 0:
-            return None
-
-        return j
-
-    #------------------------------------------------------------------------------
-    # Parsing FiCSW configuration setup JSON
-    #------------------------------------------------------------------------------
-    def check_setupconfig(self, conf):
-        # check target name)
-        for target, attrs in conf.items():
-            if target not in BOARDS:
-                print("ERROR: {0} is unknown target".format(target), file=sys.stderr)
-                return -1
-
-            # check 'fpga' if exist
-            if 'fpga' in attrs:
-                fpga = attrs['fpga']
-                if 'bitstream' not in fpga.keys():
-                    print("ERROR: For {0}, must specify bitstream".format(target), file=sys.stderr)
-                    return -1
-
-                if os.path.exists(fpga['bitstream']) == False:
-                    print("ERROR: {0} is not exist".format(fpga['bitstream']), file=sys.stderr)
-                    return -1
-
-                if 'progmode' not in fpga.keys():
-                    print("ERROR: For {0}, must specify progmode".format(target), file=sys.stderr)
-                    return -1
-                
-                if fpga['progmode'] not in ['sm16', 'sm16pr', 'sm8', 'sm8pr']:
-                    print("ERROR: progmode {0} is invalid".format(fpga['progmode']), file=sys.stderr)
-                    return -1
-
-            # check 'switch' if exist
-            if 'switch' in attrs:
-                switch = attrs['switch']
-                if self.check_swconfig(switch) < 0:
-                    return -1
-
-            # check 'option' if exist
-            if 'option' in attrs:
-                option = attrs['option']
-                if "auto_hls_reset_start" in option.keys():
-                    if option["auto_hls_reset_start"] not in {True, False}:
-                        print("ERROR: Value in auto_hls_reset_start {0} is invalid".format(
-                            option["auto_hls_reset_start"]), file=sys.stderr)
-                        return -1
-
-                if "auto_runcmd" in option.keys():
-                    if type(option["auto_runcmd"]) is not str:
-                        print("ERROR: Value in auto_runcmd {0} is invalid".format(
-                            option["auto_runcmd"]), file=sys.stderr)
-                        return -1
-
-        return 0
-
-    def parse_setupconfigfile(self, buf):
-        try:
-            j = json.loads(buf)
-
-        except json.JSONDecodeError as e:
-            print("ERROR: JSON error", file=sys.stderr)
-            print(e, file=sys.stderr)
-            return None
-
-        if self.check_setupconfig(j) < 0:
-            return None
-
-        return j
-
-    #------------------------------------------------------------------------------
-    # HTTP request handler
-    #------------------------------------------------------------------------------
-    def rest_post(self, url, data):
-        ret = {'return': 'failed'}
-        try:
-            resp = requests.post(url, data=data, headers={'Content-Type': 'application/json'})
-            ret = resp.json()
-
-        except simplejson.JSONDecodeError:
-            print("ERROR: {0:s} is not respond".format(url), file=sys.stderr)
-
-        return ret
-
-    #------------------------------------------------------------------------------
-    def rest_get(self, url):
-        ret = {'return': 'failed'}
-        try:
-            resp = requests.get(url, headers={'Content-Type': 'application/json'})
-            ret = resp.json()
-
-        except simplejson.JSONDecodeError:
-            print("ERROR: {0:s} is not respond".format(url), file=sys.stderr)
-
-        return ret
-
-    #------------------------------------------------------------------------------
-    def rest_delete(self, url):
-        ret = {'return': 'failed'}
-        try:
-            resp = requests.delete(url, headers={'Content-Type': 'application/json'})
-            ret = resp.json()
-
-        except simplejson.JSONDecodeError:
-            print("ERROR: {0:s} is not respond".format(url), file=sys.stderr)
-
-        return ret
-    
     #------------------------------------------------------------------------------
     # Commandline parser
     #------------------------------------------------------------------------------
@@ -361,7 +137,7 @@ class ficmanage:
         procs = []
         q = Queue()
         def proc(q, target):
-            ret = self.fic_status(target)
+            ret = mgr.fic_get_status(target)
             q.put((target, ret))
 
         for t in targets:
@@ -374,7 +150,7 @@ class ficmanage:
             target, ret = q.get()
             stat[target] = ret
  
-        for t in BOARDS.keys():
+        for t in mgr.board:
             if t in stat.keys():
                 if stat[t]['return'] == 'success':
                     brdst = stat[t]['status']
@@ -385,6 +161,9 @@ class ficmanage:
                 else:
                     print('{0:s}:\n'.format(t), end='')
                     print('ERROR: get status failed.\n\n')
+                    return 1
+
+        return 0
 
     #------------------------------------------------------------------------------
     def cmd_fic_reset(self):
@@ -392,21 +171,24 @@ class ficmanage:
         target = self.get_target()
 
         for t in target:
-            stat[t] = self.fic_reset(t)
+            stat[t] = mgr.fic_reset(t)
 
-        for t in BOARDS.keys():
+        for t in mgr.board:
             if t in stat.keys():
                 if stat[t]['return'] == 'success':
                     print('INFO: Reset FPGA on {0:s} is success'.format(t))
 
                 else:
                     print('INFO: Reset FPGA on {0:s} is failed'.format(t))
+                    return 1
+
+        return 0
 
     #------------------------------------------------------------------------------
-    def cmd_fic_regread(self):
+    def cmd_fic_read(self):
         if self.args.target is None:
             print("ERROR: You must specify target.", file=sys.stderr)
-            return -1
+            return 1
 
         targets = self.get_target()
         addr = 0x0
@@ -415,16 +197,16 @@ class ficmanage:
 
         except ValueError:
             print("ERROR: Invalid reg address.", file=sys.stderr)
-            return -1
+            return 1
 
         if addr > 0xffff:
             print("ERROR: Invalid reg address 0x{0:x}.".format(addr), file=sys.stderr)
-            return -1
+            return 1
 
         procs = []
         q = Queue()
         def proc(q, target, addr):
-            ret = self.fic_regread(target, addr)
+            ret = mgr.fic_read(target, addr)
             q.put((target, ret))
 
         for t in targets:
@@ -441,12 +223,15 @@ class ficmanage:
 
             else:
                 print("INFO: return from {0:s} is failed".format(target))
+                return 1
+
+        return 0
  
     #------------------------------------------------------------------------------
-    def cmd_fic_regwrite(self):
+    def cmd_fic_write(self):
         if self.args.target is None:
             print("ERROR: You must specify target.", file=sys.stderr)
-            return -1
+            return 1
 
         targets = self.get_target()
         addr = 0x0
@@ -454,23 +239,24 @@ class ficmanage:
 
         try:
             addr = int(self.args.regwrite[0], 0)
-            val = int(self.args.regwrite[1], 0)
+            val  = int(self.args.regwrite[1], 0)
 
         except ValueError:
             print("ERROR: Invalid addr/val value.", file=sys.stderr)
-            return -1
+            return 1
 
         if addr > 0xffff:
             print("ERROR: Invalid reg address 0x{0:x}.".format(addr), file=sys.stderr)
-            return -1
+            return 1
 
         if val > 0xff:
             print("ERROR: Invalid val 0x{0:x}.".format(val), file=sys.stderr)
+            return 1
 
         procs = []
         q = Queue()
         def proc(q, target, addr, val):
-            ret = self.fic_regwrite(target, addr, val)
+            ret = mgr.fic_write(target, addr, val)
             q.put((target, ret))
 
         for t in targets:
@@ -487,106 +273,236 @@ class ficmanage:
 
             else:
                 print("INFO: {0:s} [0x{1:x}] is write failed".format(target, addr))
+                return 1
+        
+        return 0
+
+    #------------------------------------------------------------------------------
+    def cmd_hls_ddr_read_exec(self, targets, addr, size):
+        if addr < 0 or addr > 0xffffffff:
+            print("ERROR: Invalid reg address 0x{0:x}.".format(addr), file=sys.stderr)
+            return 1
+
+        procs = []
+        q = Queue()
+        def proc(q, target, size, addr):
+
+            ret = {'return': 'failed'}
+
+            total_size = size
+            rx_left  = size
+            block_size = DDR_TRANSFER_BLOCK_SIZE
+            dump_file  = '{0:s}_ddr.out'.format(target)
+
+            with open(dump_file, 'wb') as f:
+                for ar in range(addr, addr+total_size, block_size):
+                    if rx_left < block_size:
+                        ret = mgr.fic_hls_ddr_read(target, rx_left, addr)
+                        rx_left -= rx_left
+
+                    else:
+                        ret = mgr.fic_hls_ddr_read(target, block_size, addr)
+                        rx_left -= block_size
+
+                    if ret['return'] == 'success':
+                        #print(ret['data'])
+                        f.write(ret['data'])
+                        print("[{0:s}] DDR Read Transfer {1:d}/{2:d}".format(target, total_size - rx_left, total_size))
+
+                    else:
+                        print("ERROR: DDR Read Transfer", file=sys.stderr)
+                        break
+
+                ret = {'return': 'success'}
+
+            q.put((target, ret))
+
+        for t in targets:
+            p = Process(target=proc, args=(q, t, size, addr))
+            procs.append(p)
+            p.start()
+
+        for p in procs:
+            p.join()
+            target, ret = q.get()
+
+        return 0
  
     #------------------------------------------------------------------------------
-    def cmd_fic_prog(self):
-        bs_files = self.args.prog
-
+    def cmd_hls_ddr_read(self):
         if self.args.target is None:
             print("ERROR: You must specify target.", file=sys.stderr)
-            return -1
+            return 1
 
         targets = self.get_target()
 
-        pr_mode = 'sm16'
-        memo = 'Configure via ficmanager by {0:s}@{1:s}'.format(os.getlogin(), os.uname()[1])
+        # Check address
+        try:
+            addr = int(self.args.ddrread[0], 0)
+            size = int(self.args.ddrread[1], 0)
 
-        if self.args.progmode != None:
-            pr_mode = self.args.progmode[0]
-            if pr_mode not in ['sm16', 'sm16pr', 'sm8', 'sm8pr']:
-                print("ERROR: The program mode {0:s} is unknown".format(pm), file=sys.stderr)
-                return -1
-        
-        if self.args.message != None:
-            memo = self.args.message[0]
+        except ValueError:
+            print("ERROR: Invalid reg address.", file=sys.stderr)
+            return 1
+
+        return self.cmd_hls_ddr_read_exec(targets, addr, size)
+
+    #------------------------------------------------------------------------------
+    def cmd_hls_ddr_write_exec(self, targets, addr, files):
+        if addr < 0 or addr > 0xffffffff:
+            print("ERROR: Invalid reg address 0x{0:x}.".format(addr), file=sys.stderr)
+            return 1
+
+        #------------------------------------------------------------------------------
+        procs = []
+        q = Queue()
+        def proc(q, target, addr, file):
+            ret = {'return': 'failed'}
+
+            total_size = os.path.getsize(file)
+            block_size = DDR_TRANSFER_BLOCK_SIZE
+            tx_size = 0
+
+            with open(file, 'rb') as f:
+                for ar in range(addr, addr+total_size, block_size):
+                    buf = f.read(block_size)
+                    ret = mgr.fic_hls_ddr_write(target, buf, ar)
+                    tx_size += len(buf)
+                    print("[{0:s}] DDR Write Transfer {1:d}/{2:d}".format(target, tx_size, total_size))
+
+                    if ret['return'] == 'failed':
+                        print("ERROR: DDR Write Transfer", file=sys.stderr)
+                        break
+
+            q.put((target, ret))
+        #------------------------------------------------------------------------------
+
+        if len(files) > 1:  # multiple files to multiple FPGAs
+            for file, t in zip(files, targets):
+                p = Process(target=proc, args=(q, t, addr, file))
+                procs.append(p)
+                p.start()
+
+        else:
+            file = files[0]
+            for t in targets:
+                p = Process(target=proc, args=(q, t, addr, file))
+                procs.append(p)
+                p.start()
+
+        for p in procs:
+            p.join()
+            target, ret = q.get()
+
+            if ret['return'] == 'success':
+                print("INFO: {0:s} [0x{1:x}] is write success".format(target, addr))
+
+            else:
+                print("INFO: {0:s} [0x{1:x}] is write failed".format(target, addr))
+                return 1
+
+        return 0
+ 
+    #------------------------------------------------------------------------------
+    def cmd_hls_ddr_write(self):
+        if self.args.target is None:
+            print("ERROR: You must specify target.", file=sys.stderr)
+            return 1
+
+        targets = self.get_target()
+
+        # Address
+        addr = 0x0
+        try:
+            addr = int(self.args.ddrwrite[0], 0)
+
+        except ValueError:
+            print("ERROR: Invalid addr/val value.", file=sys.stderr)
+            return 1
+
+        # File
+        file = self.args.ddrwrite[1]
+        if os.path.exists(file) == False:
+            print("ERROR: Can't open file {0:s}.".format(file), file=sys.stderr)
+            return 1
+
+        return self.cmd_hls_ddr_write_exec(targets, addr, [file])
+
+    #------------------------------------------------------------------------------
+    def cmd_fic_prog_exec(self, targets, pr_mode, memo, bs_files):
+
+        #------------------------------------------------------------------------------
+        procs = []
+        q = Queue()
+        def proc(q, target, pr_mode, bs_file, msg):
+            ret = mgr.fic_prog(target, pr_mode, True, bs_file, msg)
+            q.put((target, ret))
+
+        #------------------------------------------------------------------------------
 
         if len(bs_files) > 1:   # Multiple files to multiple FPGAs
             if len(bs_files) != len(targets):
                 print("ERROR: Unmatch number of *.bit files and targets.", file=sys.stderr)
-                return -1
-
-            procs = []
-            q = Queue()
-            def proc(q, target, pr_mode, bitname, b64, msg):
-                ret = self.fic_prog(target, pr_mode, True, bitname, b64, msg)
-                q.put((target, ret))
+                return 1
 
             for bs, t in zip(bs_files, targets):
                 bitname = os.path.basename(bs)
-                with open(bs, 'rb') as f:
-                    b64 = base64.b64encode(gzip.compress(f.read()))
-                    f.close()
-
-                    p = Process(target=proc, args=(q, t, pr_mode, bitname, b64, memo))
-                    procs.append(p)
-                    p.start()
-
-            for p in procs:
-                p.join()
-                target, ret = q.get()
-                if ret['return'] == 'success':
-                    print("INFO: FPGA configuration on {0:s} is success".format(target))
-
-                else:
-                    print("INFO: FPGA configuration on {0:s} is failed".format(target))
-
+                p = Process(target=proc, args=(q, t, pr_mode, bitname,  memo))
+                procs.append(p)
+                p.start()
 
         else:   # Single file to multiple FPGAs
             bitname = os.path.basename(bs_files[0])
-            with open(bs_files[0], 'rb') as f:
-                b64 = base64.b64encode(gzip.compress(f.read()))
-                f.close()
+            for t in targets:
+                p = Process(target=proc, args=(q, t, pr_mode, bitname, memo))
+                procs.append(p)
+                p.start()
 
-                procs = []
-                q = Queue()
-                def proc(q, target, pr_mode, bitname, b64, msg):
-                    ret = self.fic_prog(target, pr_mode, True, bitname, b64, msg)
-                    q.put((target, ret))
+        for p in procs:
+            p.join()
+            target, ret = q.get()
+            if ret['return'] == 'success':
+                print("INFO: FPGA configuration on {0:s} is success".format(target))
 
-                for t in targets:
-                    p = Process(target=proc, args=(q, t, pr_mode, bitname, b64, memo))
-                    procs.append(p)
-                    p.start()
-
-                for p in procs:
-                    p.join()
-                    target, ret = q.get()
-                    if ret['return'] == 'success':
-                        print("INFO: FPGA configuration on {0:s} is success".format(target))
-
-                    else:
-                        print("INFO: FPGA configuration on {0:s} is failed".format(target))
+            else:
+                print("INFO: FPGA configuration on {0:s} is failed".format(target))
+                return 1
 
         return 0
 
-
     #------------------------------------------------------------------------------
-    def cmd_hls_cmd(self):
+    def cmd_fic_prog(self):
+        if self.args.target is None:
+            print("ERROR: You must specify bitfile.", file=sys.stderr)
+            return 1
+
+        bs_files = self.args.prog
+
         if self.args.target is None:
             print("ERROR: You must specify target.", file=sys.stderr)
-            return -1
+            return 1
 
         targets = self.get_target()
 
-        cmd = self.args.hlscmd[0]
-        if cmd not in ['start', 'reset']:
-            print("ERROR: Unknown command {0:s}.".format(cmd), file=sys.stderr)
-            return -1
+        pr_mode = 'sm16'
+        if self.args.progmode != None:
+            pr_mode = self.args.progmode[0]
+            if pr_mode not in ['sm16', 'sm16pr', 'sm8', 'sm8pr']:
+                print("ERROR: The program mode {0:s} is unknown".format(pm), file=sys.stderr)
+                return 1
+        
+        memo = 'Configure via ficmanager by {0:s}@{1:s}'.format(getpass.getuser(), os.uname()[1])
+        if self.args.message != None:
+            memo = self.args.message[0]
 
+        return self.cmd_fic_prog_exec(targets, pr_mode, memo, bs_files)
+
+    #------------------------------------------------------------------------------
+    def cmd_hls_cmd_exec(self, targets, cmd):
         procs = []
         q = Queue()
         def proc(q, target, cmd):
-            ret = self.fic_hls_cmd(target, cmd)
+            ret = mgr.fic_hls_cmd(target, cmd)
             q.put((target, ret))
 
         for t in targets:
@@ -602,6 +518,7 @@ class ficmanage:
 
             else:
                 print("INFO: HLS send command on {0:s} failed".format(target))
+                return 1
 
         #procs = []
         #for t in target:
@@ -611,12 +528,27 @@ class ficmanage:
 
         #for p in procs:
         #    print(p.join())
+        return 0
 
-     #------------------------------------------------------------------------------
+    def cmd_hls_cmd(self):
+        if self.args.target is None:
+            print("ERROR: You must specify target.", file=sys.stderr)
+            return 1
+
+        targets = self.get_target()
+
+        cmd = self.args.hlscmd[0]
+        if cmd not in ['start', 'reset']:
+            print("ERROR: Unknown command {0:s}.".format(cmd), file=sys.stderr)
+            return 1
+
+        return self.cmd_hls_cmd_exec(targets, cmd)
+
+    #------------------------------------------------------------------------------
     def cmd_hls_recv(self):
         if self.args.target is None:
             print("ERROR: You must specify target.", file=sys.stderr)
-            return -1
+            return 1
 
         targets = self.get_target()
         arg1 = self.args.hlsrecv[0]
@@ -627,16 +559,16 @@ class ficmanage:
 
         except ValueError:
             print("ERROR: Invalid number.", file=sys.stderr)
-            return -1
+            return 1
 
         if count <= 0:
             print("ERROR: Invalid number.", file=sys.stderr)
-            return -1
+            return 1
 
         procs = []
         q = Queue()
         def proc(q, target, count):
-            ret = self.fic_hls_recv(target, count)
+            ret = mgr.fic_hls_receive(target, count)
             q.put((target, ret))
 
         for t in targets:
@@ -652,6 +584,7 @@ class ficmanage:
 
             else:
                 print("INFO: HLS data receive failed on {0:s}".format(target))
+                return 1
 
         #procs = []
         #for t in target:
@@ -662,11 +595,13 @@ class ficmanage:
         #for p in procs:
         #    p.join()
 
+        return 0
+
     #------------------------------------------------------------------------------
     def cmd_hls_send(self):
         if self.args.target is None:
             print("ERROR: You must specify target.", file=sys.stderr)
-            return -1
+            return 1
 
         targets = self.get_target()
         dat_files = self.args.hlssend
@@ -674,17 +609,17 @@ class ficmanage:
         if len(dat_files) > 1:   # Multiple files to multiple FPGAs
             if len(dat_files) != len(targets):
                 print("ERROR: Unmatch number of *.dat files and targets.", file=sys.stderr)
-                return -1
+                return 1
 
             procs = []
             q = Queue()
             def proc(q, target, data):
-                ret = self.fic_hls_send(target, data)
+                ret = mgr.fic_hls_send(target, data)
                 q.put((target, ret))
 
             for df, t in zip(dat_files, targets):
                 with open(df, 'rt') as f:
-                    data = self.parse_datafile(f.read())
+                    data = mgr.parse_datafile(f.read())
                     f.close()
 
                 p = Process(target=proc, args=(q, t, data))
@@ -699,17 +634,18 @@ class ficmanage:
 
                 else:
                     print("INFO: Sending data to HLS on {0:s} is failed".format(target))
+                    return 1
 
         else:   # Single file to multiple FPGAs
             filename = os.path.basename(dat_files[0])
             with open(dat_files[0], 'rt') as f:
-                data = self.parse_datafile(f.read())
+                data = mgr.parse_datafile(f.read())
                 f.close()
 
                 procs = []
                 q = Queue()
                 def proc(q, target, data):
-                    ret = self.fic_hls_send(target, data)
+                    ret = mgr.fic_hls_send(target, data)
                     q.put((target, ret))
 
                 for t in targets:
@@ -726,35 +662,30 @@ class ficmanage:
 
                     else:
                         print("INFO: Sending data to HLS on {0:s} is failed".format(target))
+                        return 1
+
         return 0
 
     #------------------------------------------------------------------------------
-    def cmd_fic_switchset(self):
-        if self.args.target is None:
-            print("ERROR: You must specify target.", file=sys.stderr)
-            return -1
-
-        targets = self.get_target()
-        sw_files = self.args.switchset
-
+    def cmd_fic_switchset_exec(self, targets, sw_files):
         if len(sw_files) > 1:   # Multiple files to multiple FPGAs
             if len(sw_files) != len(targets):
                 print("ERROR: Unmatch number of *.json files and targets.", file=sys.stderr)
-                return -1
+                return 1
 
             procs = []
             q = Queue()
             def proc(q, target, data):
-                ret = self.fic_setsw(target, data)
+                ret = mgr.fic_set_switch(target, data)
                 q.put((target, ret))
 
             for df, t in zip(sw_files, targets):
                 with open(df, 'rt') as f:
-                    data = self.parse_swconfigfile(f.read())
+                    data = mgr.parse_swconfigfile(f.read())
                     f.close()
 
                 if data is None:
-                    return -1
+                    return 1
 
                 p = Process(target=proc, args=(q, t, data))
                 procs.append(p)
@@ -768,20 +699,21 @@ class ficmanage:
 
                 else:
                     print("INFO: Set table on {0:s} is failed".format(target))
+                    return 1
 
         else:   # Single file to multiple FPGAs
             filename = os.path.basename(sw_files[0])
             with open(sw_files[0], 'rt') as f:
-                data = self.parse_swconfigfile(f.read())
+                data = mgr.parse_swconfigfile(f.read())
                 f.close()
 
                 if data is None:
-                    return -1
+                    return 1
 
                 procs = []
                 q = Queue()
                 def proc(q, target, data):
-                    ret = self.fic_setsw(target, data)
+                    ret = mgr.fic_set_switch(target, data)
                     q.put((target, ret))
 
                 for t in targets:
@@ -798,387 +730,34 @@ class ficmanage:
 
                     else:
                         print("INFO: Set table on {0:s} is failed".format(target))
+                        return 1
 
         return 0
 
-    #------------------------------------------------------------------------------
-    def fic_prog(self, target, pr_mode, compress, bitname, b64, memo):
-        ret = {'return': 'failed'}
-        if target in BOARDS.keys():
-            url =  BOARDS[target]['url'] + '/fpga'
-            j = json.dumps({
-                'mode': pr_mode,
-                'bitname': bitname,
-                'compress': compress,
-                'memo': memo,
-                'bitstream': b64.decode(encoding='utf-8')
-            })
-
-            print("INFO: Select FPGA configuration mode: {0:s}".format(pr_mode))
-            print("INFO: Send FPGA configuration {0:s} to {1:s}".format(bitname, target))
-            print("INFO: Awaiting response from {0:s}... be patient ... ".format(target))
-
-            ret = self.rest_post(url, j)
-
-        else:
-            print("ERROR: board {0:s} is not found".format(target), file=sys.stderr)
-
-        return ret
 
     #------------------------------------------------------------------------------
-    def fic_status(self, target):
-        ret = {'return': 'failed'}
-        if target in BOARDS.keys():
-            url = BOARDS[target]['url'] + '/status'
-            ret = self.rest_get(url)
-
-        else:
-            print("ERROR: board {0:s} is not found".format(target), file=sys.stderr)
-
-        return ret
-
-    #------------------------------------------------------------------------------
-    def fic_reset(self, target):
-        ret = {'return': 'failed'}
-        if target in BOARDS.keys():
-            url =  BOARDS[target]['url'] + '/fpga'
-            print("INFO: Send FPGA reset to {0:s}".format(target))
-
-            ret = self.rest_delete(url)
-
-        else:
-            print("ERROR: board {0:s} is not found".format(target), file=sys.stderr)
-
-        return ret
-
-    #------------------------------------------------------------------------------
-    def fic_hls_cmd(self, target, cmd):
-        ret = {'return': 'failed'}
-
-        if cmd not in ['start', 'reset']:
-            print("ERROR: Unknown command {0:s}".format(cmd))
-            return ret
-
-        if target in BOARDS.keys():
-            url =  BOARDS[target]['url'] + '/hls'
-            print("INFO: Send HLS command to {0:s}".format(target))
-
-            j = json.dumps({
-                'command': cmd,
-            })
-
-            ret = self.rest_post(url, j)
-
-        else:
-            print("ERROR: board {0:s} is not found".format(target), file=sys.stderr)
-
-        return ret
-
-    #------------------------------------------------------------------------------
-    def fic_hls_send(self, target, data):
-        ret = {'return': 'failed'}
-
-        if type(data) is not list:
-            print("ERROR: Invalid data type")
-            return ret
-
-        if target in BOARDS.keys():
-            url =  BOARDS[target]['url'] + '/hls'
-            print("INFO: Send HLS command to {0:s}".format(target))
-
-            j = json.dumps({
-                'command': 'send',
-                'data': data,
-            })
-
-            ret = self.rest_post(url, j)
-
-        else:
-            print("ERROR: board {0:s} is not found".format(target), file=sys.stderr)
-
-        return ret
-
-    #------------------------------------------------------------------------------
-    def fic_hls_recv(self, target, count):
-        ret = {'return': 'failed'}
-        
-        if type(count) is not int:
-            print("ERROR: Invalid count")
-            return ret
-
-        if count <= 0:
-            print("ERROR: Invalid count")
-            return ret
-
-        if target in BOARDS.keys():
-            url =  BOARDS[target]['url'] + '/hls'
-            print("INFO: Send HLS command to {0:s}".format(target))
-
-            j = json.dumps({
-                'command': 'receive',
-                'count': count,
-            })
-
-            ret = self.rest_post(url, j)
-
-        else:
-            print("ERROR: board {0:s} is not found".format(target), file=sys.stderr)
-
-        return ret
-
-    #------------------------------------------------------------------------------
-    def fic_regread(self, target, addr):
-        ret = {'return': 'failed'}
-
-        if addr < 0:
-            print("ERROR: Invalid address")
-            return ret
-
-        if target in BOARDS.keys():
-            url = BOARDS[target]['url'] + '/regread'
-
-            j = json.dumps({
-                'address': addr,
-            })
-
-            ret = self.rest_post(url, j)
-
-        else:
-            print("ERROR: board {0:s} is not found".format(target), file=sys.stderr)
-
-        return ret
-
-    #------------------------------------------------------------------------------
-    def fic_regwrite(self, target, addr, val):
-        ret = {'return': 'failed'}
-
-        if addr < 0:
-            print("ERROR: Invalid address", file=sys.stderr)
-            return ret
-
-        if val > 0xff:
-            print("ERROR: Invalid value", file=sys.stderr)
-            return ret
-
-        if target in BOARDS.keys():
-            url = BOARDS[target]['url'] + '/regwrite'
-
-            j = json.dumps({
-                'address': addr,
-                'data': val,
-            })
-
-            ret = self.rest_post(url, j)
-
-        else:
-            print("ERROR: board {0:s} is not found".format(target), file=sys.stderr)
-
-        return ret
-
-    #------------------------------------------------------------------------------
-    def fic_setsw(self, target, table):
-        ret = {'return': 'failed'}
-
-        if self.check_swconfig(table) < 0:
-            return ret
-
-        if target in BOARDS.keys():
-            url = BOARDS[target]['url'] + '/switch'
-
-            if 'tablefile' in table.keys():
-                tblf = table['tablefile']
-                with open(tblf, 'rt') as f:
-                    j = json.dumps(json.loads(f.read()))
-
-            else:
-                j = json.dumps(table)
-
-            ret = self.rest_post(url, j)
-
-        else:
-            print("ERROR: board {0:s} is not found".format(target), file=sys.stderr)
-
-        return ret
-
-    #------------------------------------------------------------------------------
-    def fic_runcmd(self, target, cmdline, timeout):
-        ret = {'return': 'failed'}
-
-        if target in BOARDS.keys():
-            url = BOARDS[target]['url'] + '/runcmd'
-
-            j = json.dumps({
-                'command': cmdline,
-                'timeout': timeout 
-                })
-
-            ret = self.rest_post(url, j)
-
-        else:
-            print("ERROR: board {0:s} is not found".format(target), file=sys.stderr)
-
-        return ret
-
-    #------------------------------------------------------------------------------
-    def main(self):
-        self.argparse()
-        print(self.args)
-
-        print(VER_STR, end='\n\n')
-        
-        #------------------------------------------------------------------------------
-        # parse command 
-        #------------------------------------------------------------------------------
-        if self.args.list:
-            self.cmd_fic_status()       # List boards (-l)
-
-        elif self.args.reset:           # FPGA reset (-r)
-            self.cmd_fic_reset()
-
-        elif self.args.hlscmd:          # send to HLS command (-hls)
-            self.cmd_hls_cmd()
-
-        elif self.args.hlsrecv:         # receive from HLS
-            self.cmd_hls_recv()
-
-        elif self.args.hlssend:         # receive from HLS
-            self.cmd_hls_send()
-
-        elif self.args.regread:         # read FiC register
-            self.cmd_fic_regread()
-
-        elif self.args.regwrite:        # write FiC register
-            self.cmd_fic_regwrite()
-
-        elif self.args.switchset:       # set switch
-            self.cmd_fic_switchset()
-
-        elif self.args.prog:            # FPGA program (-p)
-            self.cmd_fic_prog()
-
-        elif self.args.runcmd:         # Run command
-            self.cmd_fic_runcmd()
-
-        elif self.args.conf:
-            self.cmd_fic_setup()       # Setup with configuration file
-
-    #------------------------------------------------------------------------------
-    def cmd_fic_setup(self):
-        conf_file = self.args.conf[0]
-        with open(conf_file, 'rt') as f:
-            data = self.parse_setupconfigfile(f.read())
-            f.close()
-
-            if data is None:
-                return -1
-
-            procs = []
-            q = Queue()
-            #------------------------------------------------------------------
-            def proc(q, target, conf):
-                # config FPGA
-                if 'fpga' in conf:
-                    print('INFO: FPGA config on {0}'.format(target))
-                    fpga = conf['fpga']
-                    bs_file = fpga['bitstream']
-                    pr_mode = fpga['progmode']
-                    msg = ''
-                    if 'msg' in fpga.keys():
-                        msg = fpga['msg']
-
-                    bitname = os.path.basename(bs_file)
-                    with open(bs_file, 'rb') as f:
-                        b64 = base64.b64encode(gzip.compress(f.read()))
-                        f.close()
-                        ret = self.fic_prog(target, pr_mode, True, bitname, b64, msg)
-                        if ret['return'] != 'success':
-                            q.put((target, ret))
-                            return
-
-                # config TABLE
-                if 'switch' in conf:
-                    print('INFO: Switch config on {0}'.format(target))
-                    switch = conf['switch']
-                    ret = self.fic_setsw(target, switch)
-                    if ret['return'] != 'success':
-                        q.put((target, ret))
-                        return
-
-                # config OPTION
-                if 'option' in conf:
-                    print('INFO: Option setting on {0}'.format(target))
-                    option = conf['option']
-                    if 'auto_hls_reset_start' in option.keys():
-                        ret = self.fic_hls_cmd(target, 'reset')
-                        ret = self.fic_hls_cmd(target, 'start')
-                        if ret['return'] != 'success':
-                            q.put((target, ret))
-                            return
-
-                    if 'auto_runcmd' in option.keys():
-                        ret = self.fic_runcmd(target, option['auto_runcmd'], 5)
-                        stdout = ret['stdout']
-                        stderr = ret['stderr']
-
-                        if stdout is None:
-                            stdout = ""
-
-                        if stderr is None:
-                            stderr = ""
-
-                        if ret['return'] == 'success':
-                            print("INFO: Run command on {0:s} is success".format(target))
-                            print("----")
-                            print("Stdout output:\n{0:s}".format(stdout))
-                            print("Stderr output:\n{0:s}".format(stderr))
-
-                        else:
-                            print("INFO: Run command on {0:s} is failed".format(target))
-                            print("INFO: {0:s}".format(ret['error']))
-                            print("----")
-                            print("Stdout output:\n{0:s}".format(stdout))
-                            print("Stderr output:\n{0:s}".format(stderr))
-
-                # Normal exit
-                q.put((target, {'return': 'success'}))
-                return
-
-            #------------------------------------------------------------------
-            for t, v in data.items():
-                p = Process(target=proc, args=(q, t, v))
-                procs.append(p)
-                p.start()
-
-            for p in procs:
-                p.join()
-                target, ret = q.get()
-                if ret['return'] == 'success':
-                    print("INFO: Setup on {0:s} is success".format(target))
-
-                else:
-                    print("INFO: Setup on {0:s} is failed".format(target))
-
-    #------------------------------------------------------------------------------
-    def cmd_fic_runcmd(self):
-
-        #--------------------------------------------------------------------------
-        def sub_proc(q, target, cmd, tout):
-            ret = self.fic_runcmd(target, cmd, tout)
-            q.put((target, ret))
-        #--------------------------------------------------------------------------
-
+    def cmd_fic_switchset(self):
         if self.args.target is None:
             print("ERROR: You must specify target.", file=sys.stderr)
-            return -1
+            return 1
 
         targets  = self.get_target()
-        cmdlines = self.args.runcmd
-        timeout  = self.args.runcmdtimeout
+        sw_files = self.args.switchset
+
+        return self.cmd_fic_switchset_exec(targets, sw_files)
+
+    #------------------------------------------------------------------------------
+    def cmd_fic_runcmd_exec(self, targets, cmdlines, timeout):
+        #--------------------------------------------------------------------------
+        def sub_proc(q, target, cmd, tout):
+            ret = mgr.fic_runcmd(target, cmd, tout)
+            q.put((target, ret))
+        #--------------------------------------------------------------------------
 
         if len(cmdlines) > 1:   # Multiple cmd to multiple FiCs
             if len(cmdlines) != len(targets):
                 print("ERROR: Unmatch number of cmdlines and targets. Aren't you forget cmdline quoted?", file=sys.stderr)
-                return -1
+                return 1
 
             procs = []
             q = Queue()
@@ -1203,6 +782,7 @@ class ficmanage:
                     print("----")
                     print("Stdout output:\n{0:s}".format(ret['stdout']))
                     print("Stderr output:\n{0:s}".format(ret['stderr']))
+                    return 1
 
         else:   # Single cmdline to multiple FiCs
             cmdline = cmdlines[0]
@@ -1240,78 +820,201 @@ class ficmanage:
                     print("----")
                     print("Stdout output:\n{0:s}".format(stdout))
                     print("Stderr output:\n{0:s}".format(stderr))
+                    return 1
 
         return 0
 
-#    #------------------------------------------------------------------------------
-#    def test_switch():
-#        print("DEBUG: test_switch")
-#
-#        url = BASE_URI + '/switch'
-#        j = json.dumps({
-#            "ports": "4",
-#            "slots": "4",
-#            "outputs" : {
-#                "o0": {
-#                    's0': 0,
-#                    's1': 0,
-#                    's2': 0,
-#                    's3': 0,
-#                },
-#                "o1": {
-#                    's0': 0,
-#                    's1': 0,
-#                    's2': 0,
-#                    's3': 0,
-#                },
-#                "o2": {
-#                    's0': 0,
-#                    's1': 0,
-#                    's2': 0,
-#                    's3': 0,
-#                },
-#                "o3": {
-#                    's0': 0,
-#                    's1': 0,
-#                    's2': 0,
-#                    's3': 0,
-#                },
-#            },
-#        })
-#
-#        resp = requests.post(url, j, headers={'Content-Type': 'application/json'})
-#        print(resp.json())
-#
-#    #------------------------------------------------------------------------------
-#    def test_hls():
-#        print("DEBUG: test_hls")
-#        url = BASE_URI + '/hls'
-#
-#        j = json.dumps({
-#            "type": "command",
-#            "command": "reset",
-#        })
-#
-#        resp = requests.post(url, j, headers={'Content-Type': 'application/json'})
-#        print(resp.json())
-#
-#        j = json.dumps({
-#            "type": "command",
-#            "command": "start",
-#        })
-#
-#        resp = requests.post(url, j, headers={'Content-Type': 'application/json'})
-#        print(resp.json())
-#
-#        #j = json.dumps({
-#        #    "type": "data",
-#        #    "data": [0xa, 0xb, 0xc, 0xd, 0x0, 0x1, 0x2, 0x3],
-#        #})
-#
-#        #resp = requests.post(url, j, headers={'Content-Type': 'application/json'})
-#        #print(resp.json())
+    #------------------------------------------------------------------------------
+    def cmd_fic_runcmd(self):
+        if self.args.target is None:
+            print("ERROR: You must specify target.", file=sys.stderr)
+            return 1
+
+        targets  = self.get_target()
+        cmdlines = self.args.runcmd
+        timeout  = self.args.runcmdtimeout
+
+        return self.cmd_fic_runcmd_exec(targets, cmdlines, timeout)
+
+    #------------------------------------------------------------------------------
+    def cmd_fic_setup(self):
+        conf_file = self.args.conf[0]
+        with open(conf_file, 'rt') as f:
+            data = mgr.parse_setupfile(f.read())
+            f.close()
+
+            if data is None:
+                return 1
+
+            procs = []
+            q = Queue()
+            #------------------------------------------------------------------
+            def proc(q, target, conf):
+                # config FPGA
+                if 'fpga' in conf:
+                    print('INFO: FPGA setup on {0}'.format(target))
+                    fpga = conf['fpga']
+                    bs_file = fpga['bitstream']
+                    pr_mode = fpga['progmode']
+                    msg = ''
+                    if 'msg' in fpga.keys():
+                        msg = fpga['msg']
+
+                    ret = self.cmd_fic_prog_exec([target], pr_mode, msg, [bs_file])
+                    if ret > 0:
+                        q.put((target, {'return': 'failed'}))
+                        return
+
+#                    bitname = os.path.basename(bs_file)
+#                    with open(bs_file, 'rb') as f:
+#                        b64 = base64.b64encode(gzip.compress(f.read()))
+#                        f.close()
+#                        ret = mgr.fic_prog(target, pr_mode, True, bitname, b64, msg)
+#                        if ret['return'] != 'success':
+#                            q.put((target, ret))
+#                            return
+
+                # config TABLE
+                if 'switch' in conf:
+                    print('INFO: Switch setup on {0}'.format(target))
+                    switch = conf['switch']
+                    ret = mgr.fic_set_switch(target, switch)
+
+                    if ret['return'] != 'success':
+                        q.put((target, ret))
+                        return
+
+                # config OPTION
+                if 'option' in conf:
+                    print('INFO: Option setting on {0}'.format(target))
+                    option = conf['option']
+
+                    if 'auto_hls_reset_start' in option.keys():
+                        ret = mgr.fic_hls_cmd(target, 'reset')
+                        ret = mgr.fic_hls_cmd(target, 'start')
+
+                        if ret['return'] != 'success':
+                            q.put((target, ret))
+                            return
+
+                    if 'auto_runcmd' in option.keys():
+                        ret = mgr.fic_runcmd(target, option['auto_runcmd'], 5)
+                        stdout = ret['stdout']
+                        stderr = ret['stderr']
+
+                        if stdout is None:
+                            stdout = ""
+
+                        if stderr is None:
+                            stderr = ""
+
+                        if ret['return'] == 'success':
+                            print("INFO: Run command on {0:s} is success".format(target))
+                            print("----")
+                            print("Stdout output:\n{0:s}".format(stdout))
+                            print("Stderr output:\n{0:s}".format(stderr))
+
+                        else:
+                            print("INFO: Run command on {0:s} is failed".format(target))
+                            print("INFO: {0:s}".format(ret['error']))
+                            print("----")
+                            print("Stdout output:\n{0:s}".format(stdout))
+                            print("Stderr output:\n{0:s}".format(stderr))
+
+                # config DRAM
+                if 'dram' in conf:
+                    print('INFO: Dram setup on {0}'.format(target))
+                    dram = conf['dram']
+                    if dram['command'] == 'read':
+                        addr = int(dram['address'])
+                        size = int(dram['size'])
+
+                        ret = self.cmd_hls_ddr_read_exec([target], addr, size)
+                        if ret > 0:
+                            q.put((target, {'return': 'failed'}))
+                            return
+
+                    elif dram['command'] == 'write':
+                        file = dram['file']
+                        addr = int(dram['address'])
+
+                        ret = self.cmd_hls_ddr_write_exec([target], addr, [file])
+                        if ret > 0:
+                            q.put((target, {'return': 'failed'}))
+                            return
+
+                # Normal exit
+                q.put((target, {'return': 'success'}))
+                return
+
+            #------------------------------------------------------------------
+            for t, v in data.items():
+                p = Process(target=proc, args=(q, t, v))
+                procs.append(p)
+                p.start()
+
+            for p in procs:
+                p.join()
+                target, ret = q.get()
+                if ret['return'] == 'success':
+                    print("INFO: Setup on {0:s} is success".format(target))
+
+                else:
+                    print("INFO: Setup on {0:s} is failed".format(target))
+
+
+    #------------------------------------------------------------------------------
+    def main(self):
+        self.argparse()
+        print(self.args)
+
+        print(VER_STR, end='\n\n')
+        
+        #------------------------------------------------------------------------------
+        # parse command 
+        #------------------------------------------------------------------------------
+        if self.args.list:
+            return self.cmd_fic_status()       # List boards (-l)
+
+        elif self.args.reset:               # FPGA reset (-r)
+            return self.cmd_fic_reset()
+
+        elif self.args.hlscmd:          # send to HLS command (-hls)
+            return self.cmd_hls_cmd()
+
+        elif self.args.hlsrecv:         # receive from HLS
+            return self.cmd_hls_recv()
+
+        elif self.args.hlssend:         # receive from HLS
+            return self.cmd_hls_send()
+
+        elif self.args.regread:         # read FiC register
+            return self.cmd_fic_read()
+
+        elif self.args.regwrite:        # write FiC register
+            return self.cmd_fic_write()
+
+        elif self.args.ddrread:         # Read DDR
+            return self.cmd_hls_ddr_read()
+
+        elif self.args.ddrwrite:        # Write DDR
+            return self.cmd_hls_ddr_write()
+
+        elif self.args.switchset:       # set switch
+            return self.cmd_fic_switchset()
+
+        elif self.args.prog:            # FPGA program (-p)
+            return self.cmd_fic_prog()
+
+        elif self.args.runcmd:          # Run command
+            return self.cmd_fic_runcmd()
+
+        elif self.args.conf:
+            return self.cmd_fic_setup() # Setup with configuration file
+
 
 #------------------------------------------------------------------------------
 if __name__ == '__main__':
-    obj = ficmanage()
-    obj.main()
+    obj = ficmgr_cli()
+    ret = obj.main()
+    exit(ret)

@@ -5,27 +5,6 @@
             "progmode": "sm8",
             "msg" : "ficmgr TEST"
         },
-        "switch": {
-            "slots": 1,
-            "ports": 4,
-            "outputs": 1,
-            "table": {
-                "output0": {
-                    "port0": {
-                        "slot0": 0
-                    },
-                    "port1": {
-                        "slot0": 0
-                    },
-                    "port2": {
-                        "slot0": 0
-                    },
-                    "port3": {
-                        "slot0": 0
-                    }
-                }
-            }
-        },
         "dram": {
             "command": "write",
             "address": 0,
@@ -37,19 +16,16 @@
         }
     },
 
-   "fic11":{
+    "fic11":{
         "fpga":{
             "bitstream": "/home/hlab/nyacom/project/fic/ficmgr/mk1_ficbd_ddr4_20201017.bin",
             "progmode": "sm8",
             "msg" : "ficmgr TEST"
         },
-        "switch": {
-            "tablefile" : "fic_table_sample.json"
-        },
         "dram": {
-            "command": "read",
-            "address": 1024,
-            "size"   : 16777216
+            "command": "write",
+            "address": 0,
+            "file"   : "/home/hlab/nyacom/project/fic/libfic2/1G"
         },
         "option": {
             "auto_hls_reset_start": true,
