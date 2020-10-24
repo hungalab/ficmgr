@@ -348,7 +348,7 @@ class libficmgr:
             raise ValueError("ERROR: Data length is too short (less than 4B)")
 
         if (len(data) % 4) != 0:
-            raise Warning("WARN: Data length is aligned to 4B")
+            print("WARN: Data length is aligned to 4B", file=sys.stderr)
 
         if addr < 0 or addr > 0xffffffff:
             raise ValueError("ERROR: Address range is invalid")

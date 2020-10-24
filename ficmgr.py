@@ -446,15 +446,14 @@ class ficmgr_cli:
                 return 1
 
             for bs, t in zip(bs_files, targets):
-                bitname = os.path.basename(bs)
-                p = Process(target=proc, args=(q, t, pr_mode, bitname,  memo))
+                p = Process(target=proc, args=(q, t, pr_mode, bs,  memo))
                 procs.append(p)
                 p.start()
 
         else:   # Single file to multiple FPGAs
-            bitname = os.path.basename(bs_files[0])
+            bs = bs_files[0]
             for t in targets:
-                p = Process(target=proc, args=(q, t, pr_mode, bitname, memo))
+                p = Process(target=proc, args=(q, t, pr_mode, bs, memo))
                 procs.append(p)
                 p.start()
 
@@ -472,7 +471,7 @@ class ficmgr_cli:
 
     #------------------------------------------------------------------------------
     def cmd_fic_prog(self):
-        if self.args.target is None:
+        if self.args.prog is None:
             print("ERROR: You must specify bitfile.", file=sys.stderr)
             return 1
 
