@@ -81,8 +81,8 @@ class libficmgr:
             if 'slots' not in conf.keys():
                 raise ValueError("ERROR: Not number of slots defined")
 
-            if 'outputs' not in conf.keys():
-                raise ValueError("ERROR: No outputs defined")
+            if 'switches' not in conf.keys():
+                raise ValueError("ERROR: No switches defined")
 
             if 'table' not in conf.keys():
                 raise ValueError("ERROR: No table is defined")
@@ -92,12 +92,12 @@ class libficmgr:
         try:
             num_slots = conf['slots']
             num_ports = conf['ports']
-            num_outs = conf['outputs']
+            num_switches = conf['switches']
         
         except ValueError:
-            raise ValueError("ERROR: Invalid port/slot or outputs number")
+            raise ValueError("ERROR: Invalid port/slot or switches number")
 
-        if len(tbl) != num_outs:
+        if len(tbl) != num_switches:
             raise ValueError("ERROR: Insufficient number of outputs defined in the table")
 
         for out in tbl:
