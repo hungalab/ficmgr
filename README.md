@@ -64,12 +64,27 @@ optional arguments:
                     'mode': 'sm8'},
         'hls': {'status': 'stop'},
         'last_update': 1545952489.2381828,
-        'switch': {   'outputs': {   'o0': {'s0': 0, 's1': 0, 's2': 0, 's3': 0},
-                                    'o1': {'s0': 0, 's1': 0, 's2': 0, 's3': 0},
-                                    'o2': {'s0': 0, 's1': 0, 's2': 0, 's3': 0},
-                                    'o3': {'s0': 0, 's1': 0, 's2': 0, 's3': 0}},
-                    'ports': 4,
-                    'slots': 4}}
+        'switch': {
+            'switches': 1,
+            'ports' : 4,   
+            'slots' : 1,
+            'table': {
+                'switch0': {
+                    'port0': {
+                        'slot0': 0,
+                    },
+                    'port1': {
+                        'slot0': 0,
+                    },
+                    'port2': {
+                        'slot0': 0,
+                    },
+                    'port3': {
+                        'slot0': 0,
+                    }
+                },
+            }
+        }
 
 
     'fic01':
@@ -82,12 +97,27 @@ optional arguments:
                     'mode': 'sm8'},
         'hls': {'status': 'stop'},
         'last_update': 1546395288.8909626,
-        'switch': {   'outputs': {   'o0': {'s0': 0, 's1': 0, 's2': 0, 's3': 0},
-                                    'o1': {'s0': 0, 's1': 0, 's2': 0, 's3': 0},
-                                    'o2': {'s0': 0, 's1': 0, 's2': 0, 's3': 0},
-                                    'o3': {'s0': 0, 's1': 0, 's2': 0, 's3': 0}},
-                    'ports': 4,
-                    'slots': 4}}
+        'switch': {
+            'switches': 1,
+            'ports' : 4,   
+            'slots' : 1,
+            'table': {
+                'switch0': {
+                    'port0': {
+                        'slot0': 0,
+                    },
+                    'port1': {
+                        'slot0': 0,
+                    },
+                    'port2': {
+                        'slot0': 0,
+                    },
+                    'port3': {
+                        'slot0': 0,
+                    }
+                },
+            }
+        }
 ```
 
 ### Program FPGA
@@ -153,9 +183,9 @@ optional arguments:
         "switch": {
             "slots": 1,
             "ports": 4,
-            "outputs": 1,
+            "switches": 1,
             "table": {
-                "output0": {
+                "switch0": {
                     "port0": {
                         "slot0": 0
                     },
