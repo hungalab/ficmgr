@@ -680,7 +680,7 @@ class ficmgr_cli:
 
             for df, t in zip(sw_files, targets):
                 with open(df, 'rt') as f:
-                    data = mgr.parse_swconfigfile(f.read())
+                    data = mgr.parse_switchconfig(f.read())
                     f.close()
 
                 if data is None:
@@ -703,7 +703,7 @@ class ficmgr_cli:
         else:   # Single file to multiple FPGAs
             filename = os.path.basename(sw_files[0])
             with open(sw_files[0], 'rt') as f:
-                data = mgr.parse_swconfigfile(f.read())
+                data = mgr.parse_switchconfig(f.read())
                 f.close()
 
                 if data is None:
