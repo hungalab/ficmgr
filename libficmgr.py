@@ -30,7 +30,8 @@ VER_STR = 'ficmanager nyacom (C) December, 2018'
 class libficmgr:
     def __init__(self):
         # Define board and board uri
-        self.base_uri = 'http://zeus.am.ics.keio.ac.jp'
+        # self.base_uri = 'http://polaris.am.ics.keio.ac.jp'
+        self.base_uri = 'http://192.168.71.12'
 
         # Define boards
         self.board = [
